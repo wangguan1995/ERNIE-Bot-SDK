@@ -1,6 +1,7 @@
 import os
 import sys 
 import asyncio
+from pprint import pprint
 
 sys.path.append("./")
 os.environ["EB_AGENT_ACCESS_TOKEN"] = "bfa99ff06fbb553c7f9915c5e48ce839502fe7a0"
@@ -11,10 +12,12 @@ from erniebot_agent.chat_models.erniebot import ERNIEBot
 from erniebot_agent.memory.whole_memory import WholeMemory
 from erniebot_agent.extensions.langchain.embeddings import ErnieEmbeddings
 from erniebot_agent.agents.function_agent_with_retrieval import FunctionAgentWithRetrieval
+from erniebot_agent.agents import FunctionAgent
 
 from langchain.vectorstores import FAISS
 from langchain.text_splitter import SpacyTextSplitter
 from langchain.document_loaders import PyPDFDirectoryLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
 
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -48,12 +51,17 @@ async def main():
     tts_tool = RemoteToolkit.from_aistudio("texttospeech").get_tools()  # 获取语音合成工具
 
     # 创建一个WholeMemory实例。这是一个用于存储对话历史和上下文信息的类，有助于模型理解和持续对话。
-    faiss_name = "faiss_index"
+    faiss_name = "VectorDB"
     if os.path.exists(faiss_name):
         print(f"\nload {faiss_name} from local")
         db = FAISS.load_local(faiss_name, embeddings)
     else:
-        loader = PyPDFDirectoryLoader("construction_regulations")
+        # loader_pdf = PyPDFDirectoryLoader("OpenFOAM_PDF")
+        # loader_txt = DirectoryLoader('OpenFOAM_TXT', glob="**/*.txt", show_progress=True)
+        # documents_pdf = loader_pdf.load()
+        # documents_txt = loader_txt.load()
+        # documents = documents_pdf + documents_txt
+        loader = DirectoryLoader('./OpenFOAM_FIND_SOLVER', loader_cls=TextLoader)
         documents = loader.load()
         text_splitter = SpacyTextSplitter(pipeline="zh_core_web_sm", chunk_size=320, chunk_overlap=0)
         docs = text_splitter.split_documents(documents)
@@ -69,30 +77,47 @@ async def main():
 
     # Agent
     agent = FunctionAgentWithRetrieval(
-        llm=llm, tools=[tts_tool], memory=memory, knowledge_base=faiss_search, threshold=0.9
+        llm=llm, tools=[tts_tool], memory=memory, knowledge_base=faiss_search, threshold=0.0
     )
+    agent_without_db = FunctionAgent(llm=ERNIEBot(model="ernie-3.5"), tools=[], memory=WholeMemory())
+
+    # Pre prompt 1
+    query = "设置OpenFOAM 的教程目录为：/OpenFOAM-10/tutorials"
+    response = await agent_without_db._run(query)
+    
+    # Pre prompt 2
+    with open('./OpenFOAM_Template/PorousSimpleFOAM.md', 'r') as file:
+        query = file.read()
+    query = "这是一个标准的Openfoam脚本模版" + query
+    response = await agent_without_db._run(query)
 
     # Question 1
-    query = "城乡建设部规章中，城市管理执法第三章，第十三条是什么？"
-    response = await agent._run(query) # 使用agent的async_run方法来异步执行查询。由于这是异步操作，因此需要使用'await'关键字。
+    query = "porousSimpleFoam求解器有什么例子可以展示一下吗？"
+    print("\n---------------------------- Q1 Erine OpenFOAM Agent ----------------------------")
+    response = await agent_without_db._run(query)
+    messages = response.chat_history
+    for item in messages:
+        print(item.to_dict())
+        
+    # Question 2
+    query = "根据上述内容，生成一个Openfoam脚本模版"
+    print("\n---------------------------- Q2 Erine OpenFOAM Agent ----------------------------")
+    response = await agent_without_db._run(query)
     messages = response.chat_history
     for item in messages:
         print(item.to_dict())
 
-    # Question 2
-    query = "把上一轮的检索内容转换为语音"
-    response = await agent._run(query)
-    messages = response.chat_history
-    for item in messages:
-        print(item.to_dict())
+    # Question 3
+    query = "整理上述教程的可执行命令到run.sh, 展示文件，不要说任何多余的话"
+    print("\n---------------------------- Q3 Erine OpenFOAM Agent ----------------------------")
+    response = await agent_without_db._run(query)
+    print("\n预期的run.sh内容如下：")
+    print(messages[1].to_dict())
+
+    def write_to_txt(data, file_name):
+        with open(file_name, 'w') as file:
+            file.writelines(data)
+
+    write_to_txt(messages[1].to_dict()['content'], "run.sh")
 
 asyncio.run(main())
-
-
-
-## FaissSearch : 搜索 PDF, 按照相关性打分
-# from pprint import pprint
-# faiss_search = FaissSearch(db=db)
-# query = "城市管理执法主管部门的职责是什么？"
-# result = faiss_search.search(query=query)
-# pprint(result)

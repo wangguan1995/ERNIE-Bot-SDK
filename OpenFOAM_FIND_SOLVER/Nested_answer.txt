@@ -1,0 +1,3 @@
+对于燃料电池MEA中气体扩散微孔层中的气液两相流动，可以使用OpenFOAM中的interFoam求解器来模拟。interFoam求解器是基于VOF（Volume of Fluid）方法的多相流求解器，可以用于模拟气液两相流动。
+同时，如果需要考虑气体扩散层的渗透性和多孔介质的特性，可以使用OpenFOAM中的porousSimpleFoam求解器来模拟。porousSimpleFoam求解器是基于Darcy定律的多孔介质流动求解器，可以考虑多孔介质的渗透性和阻力特性。
+综合考虑，建议使用interFoam求解器结合porousSimpleFoam求解器来模拟燃料电池MEA中气体扩散微孔层中的气液两相流动。
